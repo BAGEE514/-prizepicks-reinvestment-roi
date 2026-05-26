@@ -2,7 +2,7 @@ import numpy as np, pandas as pd, sqlite3, os
 from datetime import datetime, timedelta
 
 rng = np.random.default_rng(42)        # reproducible: same data every run
-N = 12000                              # number of players
+N = 20000                              # number of players
 START = datetime(2025, 1, 1)
 
 # ---------- players ----------
@@ -19,19 +19,20 @@ players = pd.DataFrame({
     'value_tier': tier,
 })
 
-# ---------- A/B experiment: enrollment window = signup days 30..44 ----------
-in_window = (signup_offset >= 30) & (signup_offset <= 44)
+# ---------- A/B experiment: enrollment window = signup days 15..59 ----------
+# (a ~6-week window; widened so the revenue analysis has enough players)
+in_window = (signup_offset >= 15) & (signup_offset <= 59)
 group = np.where(in_window,
                  rng.choice(['treatment', 'control'], N, p=[0.5, 0.5]),
                  'not_enrolled')
 players['exp_group'] = group
 
 # ---------- hidden 'truth' the A/B test must recover ----------
-# base 30-day retention by tier; treatment adds a lift that is big for mid,
-# small for high, ~zero for low (this is the segment twist / headline).
+# base 30-day retention by tier; the bonus (treatment) adds a lift that is
+# big for mid, moderate for high, ~zero for low (the segment story).
 base_ret = players['value_tier'].map({'low': 0.18, 'mid': 0.34, 'high': 0.52}).values
 lift = np.where(players['exp_group'].values == 'treatment',
-                players['value_tier'].map({'low': 0.01, 'mid': 0.11, 'high': 0.05}).values,
+                players['value_tier'].map({'low': 0.004, 'mid': 0.15, 'high': 0.10}).values,
                 0.0)
 ret_prob = np.clip(base_ret + lift, 0, 0.95)
 retained_30 = rng.random(N) < ret_prob       # ground-truth retention flag
@@ -50,29 +51,39 @@ for i, row in players.iterrows():
 deposits = pd.DataFrame(dep_rows, columns=['player_id', 'deposit_date', 'amount'])
 deposits.insert(0, 'deposit_id', np.arange(1, len(deposits) + 1))
 
-# reinvestment BONUS COST: treatment got a 20% match (capped $25) on 1st deposit
+# reinvestment BONUS COST: treatment got a 15% match (capped $12) on 1st deposit
 first_dep = (deposits.sort_values('deposit_date')
                      .groupby('player_id', as_index=False).first())
 g = players.set_index('player_id')['exp_group']
 first_dep['bonus_cost'] = np.where(
     first_dep['player_id'].map(g) == 'treatment',
-    np.minimum(first_dep['amount'] * 0.20, 25.0), 0.0)
+    np.minimum(first_dep['amount'] * 0.15, 12.0), 0.0)
 bonus = first_dep[['player_id', 'bonus_cost']]
 
 # ---------- entries (contest slips) ----------
-ent_rows = []
+# House keeps ~12% (win prob = 0.88 / multiplier). Gentle multiplier ladder
+# keeps revenue variance realistic. Retained players stay active ~40 days and
+# play far more; churned players stop by ~day 14.
 tier_ent = {'low': 3, 'mid': 12, 'high': 30}
+mult = {2: 2.5, 3: 4, 4: 6, 5: 9, 6: 13}
+HOLD = 0.12
+ent_rows = []
 for i, row in players.iterrows():
-    base = tier_ent[row.value_tier] * (2.2 if retained_30[i] else 0.6)
-    n_ent = rng.poisson(base)
+    if retained_30[i]:
+        count = tier_ent[row.value_tier] * 4.0
+        day_hi = 40
+    else:
+        count = tier_ent[row.value_tier] * 0.6
+        day_hi = 14
+    n_ent = rng.poisson(count)
     for _ in range(int(n_ent)):
-        day = rng.integers(0, 60)
+        day = rng.integers(0, day_hi)
         fee = round(float(rng.choice([5, 10, 20, 25, 50],
                      p=[.4, .3, .15, .1, .05])), 2)
-        picks = int(rng.choice([2, 3, 4, 5, 6], p=[.30, .34, .20, .10, .06]))
-        win = rng.random() < (0.34 + 0.02 * (6 - picks))   # fewer picks win more
-        mult = {2: 3, 3: 5, 4: 10, 5: 20, 6: 35}[picks]
-        payout = round(fee * mult, 2) if win else 0.0
+        picks = int(rng.choice([2, 3, 4, 5, 6], p=[.40, .34, .16, .07, .03]))
+        m = mult[picks]
+        win = rng.random() < ((1 - HOLD) / m)
+        payout = round(fee * m, 2) if win else 0.0
         ent_rows.append((row.player_id,
                          row.signup_date + timedelta(days=int(day)),
                          fee, picks, int(win), payout))
