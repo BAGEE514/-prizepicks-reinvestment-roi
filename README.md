@@ -65,8 +65,8 @@ Python generator (01_generate_data.py)
 
 | Element | Definition |
 |---|---|
-| **Question** | Does a 20% first-deposit reinvestment bonus (capped at $25) increase 30-day retention and net revenue enough to justify its cost? |
-| **Population** | New players who signed up during a 2-week enrollment window |
+| **Question** | Does a 15% first-deposit reinvestment bonus (capped at $12) increase 30-day retention and net revenue enough to justify its cost? |
+| **Population** | New players who signed up during a ~6-week enrollment window (signup days 15–59) |
 | **Assignment** | Randomized 50/50 — treatment (received bonus) vs control (no bonus) |
 | **Primary metric** | 30-day retention (a proportion) → **two-proportion z-test** |
 | **Secondary metric** | 30-day net revenue per player (a mean) → **Welch's t-test** |
@@ -82,8 +82,8 @@ Python generator (01_generate_data.py)
 - **Reproducibility:** the entire dataset is regenerated deterministically from `seed=42` — anyone can rerun `01_generate_data.py` and get identical results.
 - **Retention is defined behaviorally**, not by login: a player is "retained at 30 days" if they placed at least one contest entry between day 23 and day 37 after signup — an observable proxy, not the hidden generator flag.
 - **Net revenue = entry fees collected − payouts**, computed per player over the first 30 days, mirroring net gaming revenue.
-- **Bonus cost is tracked explicitly** (20% match, $25 cap, first deposit only) so ROI is measured against real spend, not assumed.
-- **Modeled population:** [~12,000] players, [~XX,XXX] deposits, [~XX,XXX] contest entries across value tiers (low / mid / high).
+- **Bonus cost is tracked explicitly** (15% match, $12 cap, first deposit only) so ROI is measured against real spend, not assumed.
+- **Modeled population:** 20,000 players, 75,370 deposits, and 357,695 contest entries across value tiers (low / mid / high).
 
 ---
 
